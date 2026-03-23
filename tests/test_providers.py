@@ -5,6 +5,7 @@ from unittest.mock import patch
 from src.providers import AIProvider, get_provider
 from src.providers.claude_provider import ClaudeProvider
 from src.providers.opencode_provider import OpencodeProvider
+from src.worker import Worker
 
 
 class TestGetProvider:
@@ -131,3 +132,40 @@ class TestOpencodeProvider:
         )
         assert "--system-prompt" not in cmd
         assert "--allowedTools" not in cmd
+
+
+class TestWorker:
+    def test_working_dir_round_trip(self):
+        worker = Worker(
+            name="Alice", emoji="👩", role="developer", salary=1000,
+            personality_prompt="prompt", traits=["smart"],
+            catchphrase="hi", favorite_excuse="busy",
+            working_dir="/home/user/project",
+        )
+        data = worker.to_dict()
+        assert data["working_dir"] == "/home/user/project"
+
+        restored = Worker.from_dict(data)
+        assert restored.working_dir == "/home/user/project"
+
+    def test_working_dir_defaults_empty(self):
+        worker = Worker(
+            name="Bob", emoji="👨", role="tester", salary=500,
+            personality_prompt="prompt", traits=["calm"],
+            catchphrase="ok", favorite_excuse="later",
+        )
+        assert worker.working_dir == ""
+
+        data = worker.to_dict()
+        restored = Worker.from_dict(data)
+        assert restored.working_dir == ""
+
+    def test_from_dict_missing_working_dir(self):
+        """Existing workers saved without working_dir should load fine."""
+        data = {
+            "name": "Old", "emoji": "🧓", "role": "writer", "salary": 300,
+            "personality_prompt": "p", "traits": [], "catchphrase": "c",
+            "favorite_excuse": "e",
+        }
+        worker = Worker.from_dict(data)
+        assert worker.working_dir == ""

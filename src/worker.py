@@ -26,7 +26,7 @@ class Worker:
     def __init__(self, name: str, emoji: str, role: str, salary: int,
                  personality_prompt: str, traits: list[str], catchphrase: str,
                  favorite_excuse: str, worker_id: str | None = None,
-                 status: str = "idle"):
+                 status: str = "idle", working_dir: str = ""):
         self.id = worker_id or f"{name.lower()}-{uuid.uuid4().hex[:6]}"
         self.name = name
         self.emoji = emoji
@@ -37,6 +37,7 @@ class Worker:
         self.catchphrase = catchphrase
         self.favorite_excuse = favorite_excuse
         self._status = status
+        self.working_dir = working_dir
 
     @property
     def tier(self) -> SalaryTier:
@@ -75,6 +76,7 @@ class Worker:
             "favorite_excuse": self.favorite_excuse,
             "status": self._status,
             "current_room": self.current_room,
+            "working_dir": self.working_dir,
         }
 
     @classmethod
@@ -90,4 +92,5 @@ class Worker:
             favorite_excuse=data["favorite_excuse"],
             worker_id=data.get("id"),
             status=data.get("status", "idle"),
+            working_dir=data.get("working_dir", ""),
         )

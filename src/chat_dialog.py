@@ -1,7 +1,7 @@
 # src/chat_dialog.py
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
-    QDialog, QHBoxLayout, QLabel, QLineEdit, QPushButton,
+    QDialog, QFileDialog, QHBoxLayout, QLabel, QLineEdit, QPushButton,
     QScrollArea, QVBoxLayout, QWidget,
 )
 from src.worker import Worker
@@ -11,6 +11,7 @@ from src.worker_widget import STATUS_COLORS, STATUS_LABELS
 class ChatDialog(QDialog):
     message_sent = pyqtSignal(str, str)  # (worker_id, message)
     fire_requested = pyqtSignal(str)  # worker_id
+    working_dir_changed = pyqtSignal(str, str)  # (worker_id, new_path)
 
     def __init__(self, worker: Worker, messages: list[dict], parent=None):
         super().__init__(parent)
@@ -63,6 +64,25 @@ class ChatDialog(QDialog):
                 traits_layout.addWidget(badge)
             traits_layout.addStretch()
             layout.addLayout(traits_layout)
+
+        # Working directory
+        dir_row = QHBoxLayout()
+        dir_label = QLabel("📁")
+        dir_label.setStyleSheet("font-size: 14px;")
+        dir_row.addWidget(dir_label)
+        self.dir_display = QLabel(self.worker.working_dir or "(default sandbox)")
+        self.dir_display.setStyleSheet("color: #888; font-size: 11px;")
+        self.dir_display.setToolTip(self.worker.working_dir or "data/workers/<id>/")
+        dir_row.addWidget(self.dir_display)
+        dir_row.addStretch()
+        change_dir_btn = QPushButton("Change")
+        change_dir_btn.setStyleSheet(
+            "background: #161b22; color: #888; border: 1px solid #333; "
+            "border-radius: 4px; padding: 3px 10px; font-size: 10px;"
+        )
+        change_dir_btn.clicked.connect(self._change_working_dir)
+        dir_row.addWidget(change_dir_btn)
+        layout.addLayout(dir_row)
 
         # Chat area
         scroll = QScrollArea()
@@ -118,6 +138,14 @@ class ChatDialog(QDialog):
 
     def add_response(self, content: str):
         self._add_message("worker", content)
+
+    def _change_working_dir(self):
+        path = QFileDialog.getExistingDirectory(self, "Select Working Directory")
+        if path:
+            self.worker.working_dir = path
+            self.dir_display.setText(path)
+            self.dir_display.setToolTip(path)
+            self.working_dir_changed.emit(self.worker.id, path)
 
     def _send_message(self):
         text = self.input_field.text().strip()

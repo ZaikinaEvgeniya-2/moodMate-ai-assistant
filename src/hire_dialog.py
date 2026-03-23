@@ -1,7 +1,7 @@
 import json
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QComboBox, QDialog, QHBoxLayout, QLabel, QLineEdit,
+    QComboBox, QDialog, QFileDialog, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QSlider, QTextEdit, QVBoxLayout,
 )
 from src.worker import Worker, SalaryTier
@@ -75,6 +75,24 @@ class HireDialog(QDialog):
         )
         layout.addWidget(self.description_input)
 
+        # Working directory
+        layout.addWidget(QLabel("Working directory (optional):"))
+        dir_row = QHBoxLayout()
+        self.dir_input = QLineEdit()
+        self.dir_input.setPlaceholderText("Leave empty for default sandbox")
+        self.dir_input.setStyleSheet(
+            "background: #161b22; color: white; padding: 6px; border: 1px solid #333;"
+        )
+        dir_row.addWidget(self.dir_input)
+        browse_btn = QPushButton("Browse")
+        browse_btn.setStyleSheet(
+            "background: #161b22; color: #888; border: 1px solid #333; "
+            "border-radius: 4px; padding: 6px 12px;"
+        )
+        browse_btn.clicked.connect(self._browse_dir)
+        dir_row.addWidget(browse_btn)
+        layout.addLayout(dir_row)
+
         # Generate button
         self.generate_btn = QPushButton("Generate Personality")
         self.generate_btn.setStyleSheet(
@@ -127,6 +145,11 @@ class HireDialog(QDialog):
                 self.tier_label.setStyleSheet(f"color: {color}; font-size: 14px;")
                 break
 
+    def _browse_dir(self):
+        path = QFileDialog.getExistingDirectory(self, "Select Working Directory")
+        if path:
+            self.dir_input.setText(path)
+
     def _generate(self):
         self.generate_btn.setEnabled(False)
         self.generate_btn.setText("Generating...")
@@ -157,6 +180,7 @@ class HireDialog(QDialog):
                 traits=data.get("traits", []),
                 catchphrase=data.get("catchphrase", ""),
                 favorite_excuse=data.get("favorite_excuse", ""),
+                working_dir=self.dir_input.text().strip(),
             )
             preview = (
                 f"{self.generated_worker.emoji} {self.generated_worker.name} — "

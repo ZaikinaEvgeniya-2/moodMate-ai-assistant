@@ -79,6 +79,7 @@ class MainWindow(QMainWindow):
         dlg = ChatDialog(worker, messages, self)
         dlg.message_sent.connect(self._on_chat_message)
         dlg.fire_requested.connect(self._fire_worker)
+        dlg.working_dir_changed.connect(self._on_working_dir_changed)
         self._active_chat = dlg
         dlg.exec()
         self._active_chat = None
@@ -157,7 +158,7 @@ class MainWindow(QMainWindow):
         worker = self.manager.get_worker(worker_id)
         if not worker:
             return
-        working_dir = str(DATA_DIR / "workers" / worker.id)
+        working_dir = worker.working_dir or str(DATA_DIR / "workers" / worker.id)
         self.ai_engine.run_task(worker_id, worker.personality_prompt, working_dir, message)
 
     def _on_task_response(self, worker_id: str, response: str):
@@ -208,6 +209,12 @@ class MainWindow(QMainWindow):
             self.office.update_worker(worker)
             self.manager.save()
             self._refresh_status_bar()
+
+    def _on_working_dir_changed(self, worker_id: str, path: str):
+        worker = self.manager.get_worker(worker_id)
+        if worker:
+            worker.working_dir = path
+            self.manager.save()
 
     def _fire_worker(self, worker_id: str):
         worker = self.manager.get_worker(worker_id)
