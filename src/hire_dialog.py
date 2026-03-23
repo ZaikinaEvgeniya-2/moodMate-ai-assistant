@@ -130,7 +130,7 @@ class HireDialog(QDialog):
     def _generate(self):
         self.generate_btn.setEnabled(False)
         self.generate_btn.setText("Generating...")
-        self.preview_label.setText("Asking Claude to generate a personality...")
+        self.preview_label.setText("Generating personality...")
         role = self.role_combo.currentText().lower()
         salary = self.salary_slider.value()
         description = self.description_input.text()

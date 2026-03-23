@@ -1,12 +1,10 @@
-import os
-import shutil
-from pathlib import Path
-
 from PyQt6.QtCore import QObject, QProcess, QProcessEnvironment, pyqtSignal
+
+from src.providers import get_provider
 
 
 class AIEngine(QObject):
-    """Manages Claude CLI subprocesses for personality generation and task execution."""
+    """Manages AI CLI subprocesses for personality generation and task execution."""
 
     response_ready = pyqtSignal(str, str)  # (worker_id, response_text)
     generation_ready = pyqtSignal(str)  # (generated_json_text)
@@ -14,38 +12,13 @@ class AIEngine(QObject):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._claude_path = shutil.which("claude") or "claude"
+        self._provider = get_provider()
         self._processes: dict[str, QProcess] = {}
-        # Build a clean environment without CLAUDECODE so spawned claude
-        # processes don't think they're inside a Claude Code session
         self._env = QProcessEnvironment.systemEnvironment()
         self._env.remove("CLAUDECODE")
 
-    def _build_generate_command(self, role: str, salary: int, description: str) -> list[str]:
-        prompt = (
-            f"Generate a worker personality for a {role} with salary ${salary}. "
-            f"Additional info: {description}. "
-            "Include: name, emoji (single emoji for avatar), 3 personality traits, "
-            "work style, favorite excuse for not working, catchphrase. "
-            "Return ONLY valid JSON with keys: name, emoji, traits (array of 3 strings), "
-            "catchphrase, favorite_excuse, personality_prompt (a 2-3 sentence system prompt "
-            "describing this character's personality and work ethic for future interactions)."
-        )
-        return [self._claude_path, "--print", "--model", "haiku", "--max-turns", "1", prompt]
-
-    def _build_task_command(self, personality_prompt: str, working_dir: str,
-                            message: str) -> list[str]:
-        return [
-            self._claude_path, "--print",
-            "--model", "sonnet",
-            "--system-prompt", personality_prompt,
-            "--allowedTools", "Read,Write,Edit,Glob,Grep",
-            "--working-dir", working_dir,
-            message,
-        ]
-
     def generate_personality(self, role: str, salary: int, description: str = ""):
-        cmd = self._build_generate_command(role, salary, description)
+        cmd = self._provider.build_generate_command(role, salary, description)
         process = QProcess(self)
         process.setProcessEnvironment(self._env)
         process.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
@@ -63,7 +36,7 @@ class AIEngine(QObject):
 
     def run_task(self, worker_id: str, personality_prompt: str,
                  working_dir: str, message: str):
-        cmd = self._build_task_command(personality_prompt, working_dir, message)
+        cmd = self._provider.build_task_command(personality_prompt, working_dir, message)
         process = QProcess(self)
         process.setProcessEnvironment(self._env)
         process.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
