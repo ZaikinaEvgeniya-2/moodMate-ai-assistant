@@ -91,6 +91,7 @@ class MainWindow(QMainWindow):
         dlg.message_sent.connect(self._on_chat_message)
         dlg.fire_requested.connect(self._fire_worker)
         dlg.working_dir_changed.connect(self._on_working_dir_changed)
+        dlg.chat_cleared.connect(lambda wid: self.manager.save_chat(wid, []))
         self._active_chat = dlg
         dlg.exec()
         self._active_chat = None

@@ -1,5 +1,5 @@
 # src/chat_dialog.py
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QDialog, QFileDialog, QHBoxLayout, QLabel, QLineEdit, QPushButton,
     QScrollArea, QVBoxLayout, QWidget,
@@ -12,6 +12,7 @@ class ChatDialog(QDialog):
     message_sent = pyqtSignal(str, str)  # (worker_id, message)
     fire_requested = pyqtSignal(str)  # worker_id
     working_dir_changed = pyqtSignal(str, str)  # (worker_id, new_path)
+    chat_cleared = pyqtSignal(str)  # worker_id
 
     def __init__(self, worker: Worker, messages: list[dict], parent=None):
         super().__init__(parent)
@@ -23,6 +24,7 @@ class ChatDialog(QDialog):
             QLabel { color: white; }
         """)
         self._setup_ui(messages)
+        self.input_field.setFocus()
 
     def _setup_ui(self, messages: list[dict]):
         layout = QVBoxLayout(self)
@@ -80,19 +82,22 @@ class ChatDialog(QDialog):
             "background: #161b22; color: #888; border: 1px solid #333; "
             "border-radius: 4px; padding: 3px 10px; font-size: 10px;"
         )
+        change_dir_btn.setAutoDefault(False)
+        change_dir_btn.setDefault(False)
+        change_dir_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         change_dir_btn.clicked.connect(self._change_working_dir)
         dir_row.addWidget(change_dir_btn)
         layout.addLayout(dir_row)
 
         # Chat area
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea { border: 1px solid #333; border-radius: 4px; }")
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setStyleSheet("QScrollArea { border: 1px solid #333; border-radius: 4px; }")
         self.chat_widget = QWidget()
         self.chat_layout = QVBoxLayout(self.chat_widget)
         self.chat_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        scroll.setWidget(self.chat_widget)
-        layout.addWidget(scroll)
+        self.scroll.setWidget(self.chat_widget)
+        layout.addWidget(self.scroll)
 
         for msg in messages:
             self._add_message(msg["role"], msg["content"])
@@ -113,6 +118,9 @@ class ChatDialog(QDialog):
             "background: #238636; color: white; border-radius: 4px; "
             "padding: 8px 14px; font-size: 14px;"
         )
+        send_btn.setAutoDefault(False)
+        send_btn.setDefault(False)
+        send_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         send_btn.clicked.connect(self._send_message)
         input_row.addWidget(send_btn)
         layout.addLayout(input_row)
@@ -123,8 +131,32 @@ class ChatDialog(QDialog):
             "background: #3a1515; color: #f44336; border: 1px solid #f44336; "
             "border-radius: 4px; padding: 6px 16px; font-size: 11px;"
         )
+        fire_btn.setAutoDefault(False)
+        fire_btn.setDefault(False)
+        fire_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         fire_btn.clicked.connect(lambda: self.fire_requested.emit(self.worker.id))
-        layout.addWidget(fire_btn, alignment=Qt.AlignmentFlag.AlignRight)
+
+        bottom_row = QHBoxLayout()
+        clear_btn = QPushButton("Clear Chat")
+        clear_btn.setStyleSheet(
+            "background: #161b22; color: #888; border: 1px solid #333; "
+            "border-radius: 4px; padding: 6px 16px; font-size: 11px;"
+        )
+        clear_btn.setAutoDefault(False)
+        clear_btn.setDefault(False)
+        clear_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        clear_btn.clicked.connect(self._clear_chat)
+        bottom_row.addWidget(clear_btn)
+        bottom_row.addStretch()
+        bottom_row.addWidget(fire_btn)
+        layout.addLayout(bottom_row)
+
+    def keyPressEvent(self, event):
+        # Prevent QDialog from closing or activating buttons on Enter/Return —
+        # we handle Enter via QLineEdit.returnPressed instead.
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            return
+        super().keyPressEvent(event)
 
     def _add_message(self, role: str, content: str):
         if role == "user":
@@ -135,9 +167,21 @@ class ChatDialog(QDialog):
             label.setStyleSheet("color: #ccc; font-size: 12px; padding: 4px;")
         label.setWordWrap(True)
         self.chat_layout.addWidget(label)
+        QTimer.singleShot(0, self._scroll_to_bottom)
+
+    def _scroll_to_bottom(self):
+        vbar = self.scroll.verticalScrollBar()
+        vbar.setValue(vbar.maximum())
 
     def add_response(self, content: str):
         self._add_message("worker", content)
+
+    def _clear_chat(self):
+        while self.chat_layout.count():
+            item = self.chat_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        self.chat_cleared.emit(self.worker.id)
 
     def _change_working_dir(self):
         path = QFileDialog.getExistingDirectory(self, "Select Working Directory")
