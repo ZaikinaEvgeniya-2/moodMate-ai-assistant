@@ -61,7 +61,7 @@ data/
 
 ### Key Components
 
-**MainWindow** — Top-level window. Contains the OfficeView widget and a toolbar with the "Hire Worker" button and budget display.
+**MainWindow** — Top-level window. Contains the OfficeView widget and a toolbar with the "Hire Worker" button and a total salary label (sum of all workers' monthly salaries — display only, no accounting logic).
 
 **OfficeView** — Widget divided into 4 rooms: Workspace, Kitchen, Meeting Room, Hallway. Each room is a container widget that holds WorkerWidget instances. Workers move between rooms by being reparented to a different room container based on their current status.
 
@@ -119,6 +119,18 @@ Lazy workers (tier $0-199):
 2. After Kitchen timer (30-60s) → `wandering` in Hallway OR back to Workspace
 3. If nagged in chat → small chance of doing partial work
 4. May cycle through Kitchen/Hallway multiple times before producing any output
+
+Decent workers (tier $500-999):
+1. `received_task` → `working` in Workspace
+2. After 2-3 task interactions → 30% chance of short break (`on_break` in Kitchen, 15-20s)
+3. Returns to Workspace, continues working
+4. Mostly completes tasks with occasional grumbling
+
+Mediocre workers (tier $200-499):
+1. `received_task` → 40% chance short delay before starting, 60% starts working
+2. Frequent breaks — every 1-2 interactions, 50% chance moves to Kitchen (20-30s)
+3. If nagged → resumes with complaints, does partial work
+4. Produces 30-50% of what was asked
 
 Star workers (tier $1000+):
 1. `received_task` → immediately `working` in Workspace
