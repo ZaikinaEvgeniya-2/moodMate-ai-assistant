@@ -62,9 +62,7 @@ class TestClaudeProvider:
         idx = cmd.index("--system-prompt")
         assert cmd[idx + 1] == "You are Alex, a hard worker."
         assert "--allowedTools" in cmd
-        assert "--working-dir" in cmd
-        idx = cmd.index("--working-dir")
-        assert cmd[idx + 1] == "/tmp/test_worker"
+        assert "--working-dir" not in cmd  # working dir set via QProcess, not CLI flag
         assert cmd[-1] == "Fix the login bug"
 
     def test_build_task_command_custom_model(self):

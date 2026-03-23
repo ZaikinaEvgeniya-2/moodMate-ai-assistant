@@ -28,6 +28,5 @@ class ClaudeProvider(AIProvider):
             "--model", self._model_task,
             "--system-prompt", personality_prompt,
             "--allowedTools", "Read,Write,Edit,Glob,Grep",
-            "--working-dir", working_dir,
-            message,
+            "--", message,
         ]

@@ -91,6 +91,8 @@ class AIEngine(QObject):
         process = QProcess(self)
         process.setProcessEnvironment(self._env)
         process.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
+        if working_dir:
+            process.setWorkingDirectory(working_dir)
         self._processes[worker_id] = process
 
         start_time = time.monotonic()
