@@ -78,6 +78,11 @@ class WorkerWidget(QFrame):
         self.salary_label.setStyleSheet("color: #666; font-size: 10px;")
         layout.addWidget(self.salary_label)
 
+        # Friend count
+        self.friend_label = QLabel("")
+        self.friend_label.setStyleSheet("color: #e91e63; font-size: 9px;")
+        layout.addWidget(self.friend_label)
+
         # Task row
         self.task_label = QLabel("")
         self.task_label.setStyleSheet("color: #888; font-size: 9px;")
@@ -107,6 +112,12 @@ class WorkerWidget(QFrame):
         if len(text) > 30:
             text = text[:27] + "..."
         self.task_label.setText(f"Task: {text}" if text else "")
+
+    def update_friend_count(self, count: int):
+        if count > 0:
+            self.friend_label.setText(f"❤ {count} friend{'s' if count != 1 else ''}")
+        else:
+            self.friend_label.setText("")
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:

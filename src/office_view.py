@@ -4,6 +4,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 from src.chef import ChefWidget
+from src.friend_group_widget import FriendGroupWidget
 from src.worker import Worker
 from src.worker_widget import WorkerWidget
 
@@ -53,6 +54,16 @@ class RoomWidget(QFrame):
         if not self._worker_widgets:
             self._empty_label.show()
 
+    def add_friend_group(self, widget):
+        self._empty_label.hide()
+        self._workers_layout.addWidget(widget)
+
+    def remove_friend_group(self, widget):
+        self._workers_layout.removeWidget(widget)
+        widget.setParent(None)
+        if not self._worker_widgets:
+            self._empty_label.show()
+
 
 class OfficeView(QWidget):
     worker_clicked = pyqtSignal(str)  # worker_id
@@ -61,6 +72,7 @@ class OfficeView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._worker_widgets: dict[str, WorkerWidget] = {}
+        self._friend_groups: dict[str, FriendGroupWidget] = {}  # "id_a|id_b" -> widget
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(8, 8, 8, 8)
@@ -181,3 +193,59 @@ class OfficeView(QWidget):
             parts.append(f"{count} {status}")
         self.status_counts.setText("  ".join(parts) if parts else "No workers")
         self.total_salary_label.setText(f"Total: ${total_salary:,}/mo")
+
+    def show_friend_group(self, worker_a: Worker, worker_b: Worker, level: int, room: str):
+        """Replace individual worker widgets with a grouped friend card."""
+        key = "|".join(sorted([worker_a.id, worker_b.id]))
+        if key in self._friend_groups:
+            return
+
+        w_a = self._worker_widgets.get(worker_a.id)
+        w_b = self._worker_widgets.get(worker_b.id)
+        if w_a:
+            w_a.hide()
+        if w_b:
+            w_b.hide()
+
+        group = FriendGroupWidget(worker_a, worker_b, level)
+        group.clicked.connect(self._on_friend_group_clicked)
+        self._friend_groups[key] = group
+
+        target_room = self.rooms.get(room)
+        if target_room:
+            target_room.add_friend_group(group)
+
+    def remove_friend_group(self, id_a: str, id_b: str):
+        """Remove friend group widget and restore individual widgets."""
+        key = "|".join(sorted([id_a, id_b]))
+        group = self._friend_groups.pop(key, None)
+        if not group:
+            return
+
+        for room in self.rooms.values():
+            room.remove_friend_group(group)
+        group.deleteLater()
+
+        w_a = self._worker_widgets.get(id_a)
+        w_b = self._worker_widgets.get(id_b)
+        if w_a:
+            w_a.show()
+        if w_b:
+            w_b.show()
+
+    def update_friend_group_conversation(self, id_a: str, id_b: str, lines: list[dict]):
+        """Update the conversation snippet on a friend group widget."""
+        key = "|".join(sorted([id_a, id_b]))
+        group = self._friend_groups.get(key)
+        if group:
+            group.update_conversation(lines)
+
+    def update_friend_indicator(self, worker_id: str, count: int):
+        """Update the friend count indicator on a worker widget."""
+        widget = self._worker_widgets.get(worker_id)
+        if widget:
+            widget.update_friend_count(count)
+
+    def _on_friend_group_clicked(self, id_a: str, id_b: str):
+        """Emit signal when friend group is clicked."""
+        self.worker_clicked.emit(f"friend:{id_a}:{id_b}")
