@@ -43,6 +43,12 @@ class TestClaudeProvider:
         assert "1200" in prompt
         assert "good at Python" in prompt
 
+    def test_build_generate_command_custom_model(self):
+        with patch.dict(os.environ, {"AI_MODEL_GENERATE": "opus"}):
+            provider = ClaudeProvider()
+            cmd = provider.build_generate_command(role="dev", salary=500, description="")
+            assert "opus" in cmd
+
     def test_build_task_command(self):
         provider = ClaudeProvider()
         cmd = provider.build_task_command(
@@ -60,6 +66,14 @@ class TestClaudeProvider:
         assert cmd[idx + 1] == "/tmp/test_worker"
         assert cmd[-1] == "Fix the login bug"
 
+    def test_build_task_command_custom_model(self):
+        with patch.dict(os.environ, {"AI_MODEL_TASK": "opus"}):
+            provider = ClaudeProvider()
+            cmd = provider.build_task_command(
+                personality_prompt="Test", working_dir="/tmp", message="Do stuff",
+            )
+            assert "opus" in cmd
+
 
 class TestOpencodeProvider:
     def test_build_generate_command(self):
@@ -72,6 +86,12 @@ class TestOpencodeProvider:
         assert "writer" in prompt
         assert "800" in prompt
         assert "loves poetry" in prompt
+
+    def test_build_generate_command_custom_model(self):
+        with patch.dict(os.environ, {"AI_MODEL_GENERATE": "opencode/llama-fast"}):
+            provider = OpencodeProvider()
+            cmd = provider.build_generate_command(role="dev", salary=500, description="")
+            assert "opencode/llama-fast" in cmd
 
     def test_build_generate_command_no_system_prompt_flag(self):
         provider = OpencodeProvider()
@@ -93,6 +113,14 @@ class TestOpencodeProvider:
         combined = cmd[-1]
         assert "You are grumpy Bob." in combined
         assert "Write tests" in combined
+
+    def test_build_task_command_custom_model(self):
+        with patch.dict(os.environ, {"AI_MODEL_TASK": "opencode/gpt-4o"}):
+            provider = OpencodeProvider()
+            cmd = provider.build_task_command(
+                personality_prompt="Test", working_dir="/tmp", message="Do stuff",
+            )
+            assert "opencode/gpt-4o" in cmd
 
     def test_build_task_command_no_system_prompt_flag(self):
         provider = OpencodeProvider()
