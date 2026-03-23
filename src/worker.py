@@ -19,6 +19,7 @@ STATUS_TO_ROOM = {
     "in_kitchen": "kitchen",
     "wandering": "hallway",
     "making_excuses": "hallway",
+    "chatting": "kitchen",
 }
 
 
@@ -38,6 +39,7 @@ class Worker:
         self.favorite_excuse = favorite_excuse
         self._status = status
         self.working_dir = working_dir
+        self._room_override: str | None = None
 
     @property
     def tier(self) -> SalaryTier:
@@ -56,10 +58,14 @@ class Worker:
 
     @status.setter
     def status(self, value: str):
+        if self._status == "chatting" and value != "chatting":
+            self._room_override = None
         self._status = value
 
     @property
     def current_room(self) -> str:
+        if self._room_override:
+            return self._room_override
         return STATUS_TO_ROOM.get(self._status, "workspace")
 
     def to_dict(self) -> dict:

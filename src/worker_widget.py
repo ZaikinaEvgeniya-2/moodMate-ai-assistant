@@ -13,6 +13,7 @@ STATUS_COLORS = {
     "in_kitchen": "#ff9800",
     "wandering": "#f44336",
     "making_excuses": "#f44336",
+    "chatting": "#e91e63",
 }
 
 STATUS_LABELS = {
@@ -25,6 +26,7 @@ STATUS_LABELS = {
     "in_kitchen": "Drinking tea",
     "wandering": "Wandering around",
     "making_excuses": "Making excuses",
+    "chatting": "Chatting",
 }
 
 

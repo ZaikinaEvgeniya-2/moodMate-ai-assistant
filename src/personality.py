@@ -20,6 +20,8 @@ class BehaviorEngine:
             return self._on_wandering(tier)
         elif status == "on_break":
             return self._on_break(tier)
+        elif status == "chatting":
+            return (status, 0)
         else:
             return (status, 0)
 

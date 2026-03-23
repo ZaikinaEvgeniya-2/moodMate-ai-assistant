@@ -275,7 +275,7 @@ class MainWindow(QMainWindow):
         self.office.hide_chef()
         self._start_chef_timer()
 
-    _SLACKING_STATUSES = {"on_break", "in_kitchen", "wandering", "making_excuses"}
+    _SLACKING_STATUSES = {"on_break", "in_kitchen", "wandering", "making_excuses", "chatting"}
 
     def _chef_catch_slackers(self, room: str):
         for worker in self.manager.workers:
