@@ -3,6 +3,7 @@ from PyQt6.QtWidgets import (
     QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton,
     QVBoxLayout, QWidget,
 )
+from src.chef import ChefWidget
 from src.worker import Worker
 from src.worker_widget import WorkerWidget
 
@@ -111,6 +112,38 @@ class OfficeView(QWidget):
         status_bar.addWidget(hire_btn)
 
         main_layout.addLayout(status_bar)
+
+    def add_chef(self):
+        """Create the chef widget (initially hidden — in his office)."""
+        self._chef_widget = ChefWidget()
+        self._chef_room: str | None = None
+
+    def move_chef(self, room: str):
+        """Move chef widget into the given room."""
+        if self._chef_room:
+            r = self.rooms.get(self._chef_room)
+            if r:
+                r._workers_layout.removeWidget(self._chef_widget)
+                self._chef_widget.setParent(None)
+                if not r._worker_widgets:
+                    r._empty_label.show()
+        target = self.rooms.get(room)
+        if target:
+            target._empty_label.hide()
+            target._workers_layout.addWidget(self._chef_widget)
+            self._chef_widget.show()
+            self._chef_room = room
+
+    def hide_chef(self):
+        """Remove chef from all rooms (back to his office)."""
+        if self._chef_room:
+            r = self.rooms.get(self._chef_room)
+            if r:
+                r._workers_layout.removeWidget(self._chef_widget)
+                self._chef_widget.setParent(None)
+                if not r._worker_widgets:
+                    r._empty_label.show()
+            self._chef_room = None
 
     def add_worker(self, worker: Worker):
         widget = WorkerWidget(worker)

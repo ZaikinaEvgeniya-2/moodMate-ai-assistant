@@ -16,11 +16,14 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 
+import random
+
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication, QMainWindow, QMessageBox
 
 from src.ai_engine import AIEngine
 from src.chat_dialog import ChatDialog
+from src.chef import Chef
 from src.hire_dialog import HireDialog
 from src.office_view import OfficeView
 from src.personality import BehaviorEngine
@@ -44,6 +47,7 @@ class MainWindow(QMainWindow):
 
         self._active_chat: ChatDialog | None = None
         self._pending_timers: dict[str, QTimer] = {}
+        self._pending_messages: dict[str, str] = {}
 
         # Office view
         self.office = OfficeView()
@@ -59,6 +63,13 @@ class MainWindow(QMainWindow):
         for worker in self.manager.workers:
             self.office.add_worker(worker)
         self._refresh_status_bar()
+
+        # Chef patrol
+        self.chef = Chef()
+        self.office.add_chef()
+        self._chef_timer = QTimer(self)
+        self._chef_timer.timeout.connect(self._chef_patrol)
+        self._start_chef_timer()
 
     def _refresh_status_bar(self):
         self.office.update_status_bar(self.manager.workers, self.manager.total_salary)
@@ -102,7 +113,8 @@ class MainWindow(QMainWindow):
         new_status, delay = self.behavior.decide_next_status(worker)
 
         if delay > 0:
-            # Worker procrastinates first
+            # Worker procrastinates first — track the pending message
+            self._pending_messages[worker_id] = message
             worker.status = new_status
             self.office.update_worker(worker)
             self.manager.save()
@@ -119,6 +131,7 @@ class MainWindow(QMainWindow):
             self.office.update_worker(worker)
             self._refresh_status_bar()
             if new_status == "working":
+                self._pending_messages.pop(worker_id, None)
                 self._run_task(worker_id, message)
 
     def _after_delay(self, worker_id: str, original_message: str):
@@ -134,6 +147,7 @@ class MainWindow(QMainWindow):
         self._refresh_status_bar()
 
         if new_status == "working":
+            self._pending_messages.pop(worker_id, None)
             self._run_task(worker_id, original_message)
         elif delay > 0:
             timer = QTimer(self)
@@ -143,6 +157,7 @@ class MainWindow(QMainWindow):
             self._pending_timers[worker_id] = timer
         else:
             # Worker gave up, add a snarky message
+            self._pending_messages.pop(worker_id, None)
             messages = self.manager.load_chat(worker_id)
             messages.append({
                 "role": "worker",
@@ -215,6 +230,96 @@ class MainWindow(QMainWindow):
         if worker:
             worker.working_dir = path
             self.manager.save()
+
+    # --- Chef patrol ---
+
+    def _start_chef_timer(self):
+        interval = random.randint(8, 15) * 1000
+        self._chef_timer.start(interval)
+
+    def _chef_patrol(self):
+        self._chef_timer.stop()
+
+        # Build the patrol route — workspace & kitchen appear more often
+        if not hasattr(self, "_patrol_route") or not self._patrol_route:
+            rooms = [
+                "workspace", "workspace", "workspace",
+                "kitchen", "kitchen",
+                "hallway",
+                "meeting_room",
+            ]
+            random.shuffle(rooms)
+            # Deduplicate consecutive duplicates so chef doesn't "stay" in same room
+            route: list[str] = [rooms[0]]
+            for r in rooms[1:]:
+                if r != route[-1]:
+                    route.append(r)
+            self._patrol_route = route
+
+        # Visit the next room in the route
+        room = self._patrol_route.pop(0)
+        self.chef.current_room = room
+        self.office.move_chef(room)
+        self._chef_catch_slackers(room)
+
+        if self._patrol_route:
+            # More rooms to visit — move to the next one after a short delay
+            QTimer.singleShot(random.randint(3, 5) * 1000, self._chef_patrol)
+        else:
+            # Patrol done — chef goes back to his office after a brief stay
+            QTimer.singleShot(random.randint(3, 5) * 1000, self._chef_return_to_office)
+
+    def _chef_return_to_office(self):
+        self.chef.current_room = None
+        self.office.hide_chef()
+        self._start_chef_timer()
+
+    _SLACKING_STATUSES = {"on_break", "in_kitchen", "wandering", "making_excuses"}
+
+    def _chef_catch_slackers(self, room: str):
+        for worker in self.manager.workers:
+            if worker.current_room != room:
+                continue
+            is_slacking = worker.status in self._SLACKING_STATUSES
+            is_idle_with_task = (
+                worker.status == "idle" and worker.id in self._pending_messages
+            )
+            if not (is_slacking or is_idle_with_task):
+                continue
+
+            # Cancel any procrastination timer
+            timer = self._pending_timers.pop(worker.id, None)
+            if timer:
+                timer.stop()
+
+            # Show sorry emoji in current room for 5 seconds (don't move yet)
+            sorry_widget = self.office._worker_widgets.get(worker.id)
+            if sorry_widget:
+                sorry_widget.status_label.setText("\U0001f630 Sorry!")  # 😰
+                sorry_widget.status_label.setStyleSheet(
+                    "color: #ff6b6b; font-size: 11px;"
+                )
+
+            # After 5 seconds, move worker to workspace and start task
+            pending_msg = self._pending_messages.pop(worker.id, None)
+            QTimer.singleShot(
+                5000,
+                lambda wid=worker.id, msg=pending_msg: self._chef_send_to_work(wid, msg),
+            )
+
+    def _chef_send_to_work(self, worker_id: str, pending_msg: str | None):
+        worker = self.manager.get_worker(worker_id)
+        if not worker:
+            return
+        if pending_msg:
+            worker.status = "working"
+            self.office.update_worker(worker)
+            self._refresh_status_bar()
+            self._run_task(worker_id, pending_msg)
+        else:
+            worker.status = "idle"
+            self.office.update_worker(worker)
+            self._refresh_status_bar()
 
     def _fire_worker(self, worker_id: str):
         worker = self.manager.get_worker(worker_id)
