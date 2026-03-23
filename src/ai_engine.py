@@ -1,7 +1,8 @@
+import os
 import shutil
 from pathlib import Path
 
-from PyQt6.QtCore import QObject, QProcess, pyqtSignal
+from PyQt6.QtCore import QObject, QProcess, QProcessEnvironment, pyqtSignal
 
 
 class AIEngine(QObject):
@@ -15,6 +16,10 @@ class AIEngine(QObject):
         super().__init__(parent)
         self._claude_path = shutil.which("claude") or "claude"
         self._processes: dict[str, QProcess] = {}
+        # Build a clean environment without CLAUDECODE so spawned claude
+        # processes don't think they're inside a Claude Code session
+        self._env = QProcessEnvironment.systemEnvironment()
+        self._env.remove("CLAUDECODE")
 
     def _build_generate_command(self, role: str, salary: int, description: str) -> list[str]:
         prompt = (
@@ -42,6 +47,7 @@ class AIEngine(QObject):
     def generate_personality(self, role: str, salary: int, description: str = ""):
         cmd = self._build_generate_command(role, salary, description)
         process = QProcess(self)
+        process.setProcessEnvironment(self._env)
         process.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
 
         def on_finished(exit_code, exit_status):
@@ -59,6 +65,7 @@ class AIEngine(QObject):
                  working_dir: str, message: str):
         cmd = self._build_task_command(personality_prompt, working_dir, message)
         process = QProcess(self)
+        process.setProcessEnvironment(self._env)
         process.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
         self._processes[worker_id] = process
 
