@@ -26,12 +26,13 @@ class AIEngine(QObject):
             "catchphrase, favorite_excuse, personality_prompt (a 2-3 sentence system prompt "
             "describing this character's personality and work ethic for future interactions)."
         )
-        return [self._claude_path, "--print", prompt]
+        return [self._claude_path, "--print", "--model", "haiku", "--max-turns", "1", prompt]
 
     def _build_task_command(self, personality_prompt: str, working_dir: str,
                             message: str) -> list[str]:
         return [
             self._claude_path, "--print",
+            "--model", "sonnet",
             "--system-prompt", personality_prompt,
             "--allowedTools", "Read,Write,Edit,Glob,Grep",
             "--working-dir", working_dir,
