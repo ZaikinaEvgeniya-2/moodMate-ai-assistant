@@ -66,6 +66,7 @@ class MainWindow(QMainWindow):
         # Load existing workers into view
         for worker in self.manager.workers:
             self.office.add_worker(worker)
+        self._refresh_friend_indicators()
         self._refresh_status_bar()
 
         # Chef patrol
@@ -559,6 +560,18 @@ class MainWindow(QMainWindow):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
+            # Clean up any active friend conversation before removing
+            if worker.status == "chatting":
+                for key, pair in list(self.friendships._chatting_pairs.items()):
+                    if worker_id in pair:
+                        other_id = pair[0] if pair[1] == worker_id else pair[1]
+                        self.friendships.end_conversation(pair[0], pair[1])
+                        self.office.remove_friend_group(pair[0], pair[1])
+                        other = self.manager.get_worker(other_id)
+                        if other:
+                            other.status = "idle"
+                            self.office.update_worker(other)
+                        break
             if self._active_chat:
                 self._active_chat.close()
                 self._active_chat = None

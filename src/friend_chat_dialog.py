@@ -1,4 +1,4 @@
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QDialog, QHBoxLayout, QLabel, QPushButton, QScrollArea,
     QTabWidget, QVBoxLayout, QWidget,
