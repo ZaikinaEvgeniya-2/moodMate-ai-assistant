@@ -45,3 +45,18 @@ class OpencodeProvider(AIProvider):
         ]
         logger.debug(f"[task] command: {cmd[:6]} + [prompt ({len(combined)} chars)]")
         return cmd
+
+    def build_conversation_command(self, personality_a: str, name_a: str,
+                                    personality_b: str, name_b: str) -> list[str]:
+        prompt = (
+            f"Generate a short funny conversation (3-4 lines) between two office workers "
+            f"who are hanging out instead of working.\n\n"
+            f"Worker 1 - {name_a}:\n{personality_a}\n\n"
+            f"Worker 2 - {name_b}:\n{personality_b}\n\n"
+            f"Return ONLY valid JSON array of objects with keys: name, text\n"
+            f'Example: [{{"name": "{name_a}", "text": "hey"}}, '
+            f'{{"name": "{name_b}", "text": "sup"}}]'
+        )
+        cmd = [self._path, "run", "-m", self._model_generate, prompt]
+        logger.debug(f"[conversation] command: {cmd[:4]} + [prompt ({len(prompt)} chars)]")
+        return cmd

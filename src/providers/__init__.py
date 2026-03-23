@@ -15,6 +15,12 @@ class AIProvider(ABC):
         """Build CLI command for task execution."""
         ...
 
+    @abstractmethod
+    def build_conversation_command(self, personality_a: str, name_a: str,
+                                    personality_b: str, name_b: str) -> list[str]:
+        """Build CLI command for generating a friend conversation."""
+        ...
+
 
 def get_provider() -> AIProvider:
     """Return provider based on AI_PROVIDER env var. Default: opencode."""

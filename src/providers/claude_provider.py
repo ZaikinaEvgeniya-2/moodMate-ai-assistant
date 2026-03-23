@@ -30,3 +30,16 @@ class ClaudeProvider(AIProvider):
             "--allowedTools", "Read,Write,Edit,Glob,Grep",
             "--", message,
         ]
+
+    def build_conversation_command(self, personality_a: str, name_a: str,
+                                    personality_b: str, name_b: str) -> list[str]:
+        prompt = (
+            f"Generate a short funny conversation (3-4 lines) between two office workers "
+            f"who are hanging out instead of working.\n\n"
+            f"Worker 1 - {name_a}:\n{personality_a}\n\n"
+            f"Worker 2 - {name_b}:\n{personality_b}\n\n"
+            f"Return ONLY valid JSON array of objects with keys: name, text\n"
+            f'Example: [{{"name": "{name_a}", "text": "hey"}}, '
+            f'{{"name": "{name_b}", "text": "sup"}}]'
+        )
+        return [self._path, "--print", "--model", self._model_generate, "--max-turns", "1", prompt]

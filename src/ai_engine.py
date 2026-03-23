@@ -16,6 +16,7 @@ class AIEngine(QObject):
     response_ready = pyqtSignal(str, str)  # (worker_id, response_text)
     generation_ready = pyqtSignal(str)  # (generated_json_text)
     error_occurred = pyqtSignal(str, str)  # (worker_id, error_message)
+    conversation_ready = pyqtSignal(str, str, str)  # (worker_id_a, worker_id_b, json_text)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -138,6 +139,44 @@ class AIEngine(QObject):
         timer = QTimer(self)
         timer.setSingleShot(True)
         timer.timeout.connect(lambda: self._kill_if_running(process, f"task:{worker_id}"))
+        timer.start(PROCESS_TIMEOUT_MS)
+        process.finished.connect(timer.stop)
+
+    def generate_conversation(self, worker_id_a: str, worker_id_b: str,
+                               personality_a: str, name_a: str,
+                               personality_b: str, name_b: str):
+        """Generate a conversation between two workers."""
+        cmd = self._provider.build_conversation_command(
+            personality_a, name_a, personality_b, name_b
+        )
+        conv_key = f"conv:{worker_id_a}:{worker_id_b}"
+        logger.info(f"[{conv_key}] Starting conversation generation")
+
+        process = QProcess(self)
+        process.setProcessEnvironment(self._env)
+        process.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
+        self._processes[conv_key] = process
+
+        start_time = time.monotonic()
+
+        def on_finished(exit_code, exit_status):
+            elapsed = time.monotonic() - start_time
+            output = bytes(process.readAllStandardOutput()).decode("utf-8", errors="replace")
+            logger.info(f"[{conv_key}] Finished: exit={exit_code}, elapsed={elapsed:.1f}s")
+            if exit_code == 0:
+                self.conversation_ready.emit(worker_id_a, worker_id_b, output)
+            else:
+                logger.error(f"[{conv_key}] Failed: {output[:200]}")
+            self._processes.pop(conv_key, None)
+            process.deleteLater()
+
+        process.finished.connect(on_finished)
+        process.start(cmd[0], cmd[1:])
+        process.closeWriteChannel()
+
+        timer = QTimer(self)
+        timer.setSingleShot(True)
+        timer.timeout.connect(lambda: self._kill_if_running(process, conv_key))
         timer.start(PROCESS_TIMEOUT_MS)
         process.finished.connect(timer.stop)
 
