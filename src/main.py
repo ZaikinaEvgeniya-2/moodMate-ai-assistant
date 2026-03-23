@@ -28,6 +28,7 @@ from src.hire_dialog import HireDialog
 from src.office_view import OfficeView
 from src.personality import BehaviorEngine
 from src.worker_manager import WorkerManager
+from src.friendship_manager import FriendshipManager, FOLLOW_CHANCES, CHAT_DURATIONS
 
 
 DATA_DIR = Path(__file__).parent.parent / "data"
@@ -44,6 +45,8 @@ class MainWindow(QMainWindow):
         self.behavior = BehaviorEngine()
         self.manager = WorkerManager(data_dir=DATA_DIR)
         self.manager.load()
+        self.friendships = FriendshipManager(data_dir=DATA_DIR)
+        self.friendships.load()
 
         self._active_chat: ChatDialog | None = None
         self._pending_timers: dict[str, QTimer] = {}
@@ -58,6 +61,7 @@ class MainWindow(QMainWindow):
         # AI engine signals
         self.ai_engine.response_ready.connect(self._on_task_response)
         self.ai_engine.error_occurred.connect(self._on_task_error)
+        self.ai_engine.conversation_ready.connect(self._on_conversation_ready)
 
         # Load existing workers into view
         for worker in self.manager.workers:
@@ -71,6 +75,11 @@ class MainWindow(QMainWindow):
         self._chef_timer.timeout.connect(self._chef_patrol)
         self._start_chef_timer()
 
+        # Friendship tick timer — co-location detection & conversation triggers
+        self._friendship_timer = QTimer(self)
+        self._friendship_timer.timeout.connect(self._friendship_tick)
+        self._friendship_timer.start(10_000)  # every 10 seconds
+
     def _refresh_status_bar(self):
         self.office.update_status_bar(self.manager.workers, self.manager.total_salary)
 
@@ -83,6 +92,13 @@ class MainWindow(QMainWindow):
             self._refresh_status_bar()
 
     def _open_chat(self, worker_id: str):
+        # Check if this is a friend group click
+        if worker_id.startswith("friend:"):
+            parts = worker_id.split(":")
+            if len(parts) == 3:
+                self._open_friend_chat(parts[1], parts[2])
+                return
+
         worker = self.manager.get_worker(worker_id)
         if not worker:
             return
@@ -120,6 +136,7 @@ class MainWindow(QMainWindow):
             self.office.update_worker(worker)
             self.manager.save()
             self._refresh_status_bar()
+            self._check_follow_friend(worker)
 
             # After delay, maybe work or procrastinate more
             timer = QTimer(self)
@@ -146,6 +163,7 @@ class MainWindow(QMainWindow):
         self.office.update_worker(worker)
         self.manager.save()
         self._refresh_status_bar()
+        self._check_follow_friend(worker)
 
         if new_status == "working":
             self._pending_messages.pop(worker_id, None)
@@ -293,6 +311,27 @@ class MainWindow(QMainWindow):
             if timer:
                 timer.stop()
 
+            # If chatting, end the conversation
+            if worker.status == "chatting":
+                for key, pair in list(self.friendships._chatting_pairs.items()):
+                    if worker.id in pair:
+                        other_id = pair[0] if pair[1] == worker.id else pair[1]
+                        self.friendships.end_conversation(pair[0], pair[1])
+                        self.office.remove_friend_group(pair[0], pair[1])
+                        other = self.manager.get_worker(other_id)
+                        if other and other.status == "chatting":
+                            other_widget = self.office._worker_widgets.get(other_id)
+                            if other_widget:
+                                other_widget.status_label.setText("\U0001f630 Sorry!")
+                                other_widget.status_label.setStyleSheet(
+                                    "color: #ff6b6b; font-size: 11px;"
+                                )
+                            QTimer.singleShot(
+                                5000,
+                                lambda oid=other_id: self._chef_send_to_work(oid, None),
+                            )
+                        break
+
             # Show sorry emoji in current room for 5 seconds (don't move yet)
             sorry_widget = self.office._worker_widgets.get(worker.id)
             if sorry_widget:
@@ -322,6 +361,194 @@ class MainWindow(QMainWindow):
             self.office.update_worker(worker)
             self._refresh_status_bar()
 
+    # --- Friendship system ---
+
+    _SOCIALIZING_STATUSES = {"on_break", "in_kitchen", "wandering", "making_excuses", "chatting"}
+
+    def _friendship_tick(self):
+        """Every 10s: grow friendships for co-located workers, trigger conversations."""
+        rooms: dict[str, list] = {}
+        for worker in self.manager.workers:
+            room = worker.current_room
+            if room == "workspace":
+                continue
+            if worker.status not in self._SOCIALIZING_STATUSES:
+                continue
+            rooms.setdefault(room, []).append(worker)
+
+        changed = False
+        for room, workers in rooms.items():
+            if len(workers) < 2:
+                continue
+            for i, w_a in enumerate(workers):
+                for w_b in workers[i + 1:]:
+                    if self.friendships.increase_friendship(w_a.id, w_b.id):
+                        changed = True
+                    level = self.friendships.get_level(w_a.id, w_b.id)
+                    if (level > 0
+                            and w_a.status != "chatting" and w_b.status != "chatting"
+                            and self.friendships.can_start_conversation(w_a.id, w_b.id)):
+                        self._start_friend_conversation(w_a, w_b)
+
+        if changed:
+            self.friendships.save()
+            self._refresh_friend_indicators()
+
+    def _start_friend_conversation(self, worker_a, worker_b):
+        """Initiate AI-generated conversation between two friends."""
+        room = worker_a.current_room
+
+        self.friendships.start_conversation(
+            worker_a.id, worker_b.id, worker_a.status, worker_b.status
+        )
+        worker_a._room_override = room
+        worker_a.status = "chatting"
+        worker_b._room_override = room
+        worker_b.status = "chatting"
+        self.office.update_worker(worker_a)
+        self.office.update_worker(worker_b)
+        self._refresh_status_bar()
+
+        level = self.friendships.get_level(worker_a.id, worker_b.id)
+        self.office.show_friend_group(worker_a, worker_b, level, room)
+
+        self.ai_engine.generate_conversation(
+            worker_a.id, worker_b.id,
+            worker_a.personality_prompt, worker_a.name,
+            worker_b.personality_prompt, worker_b.name,
+        )
+
+        duration = CHAT_DURATIONS.get(level, 15) * 1000
+        QTimer.singleShot(
+            duration,
+            lambda a=worker_a.id, b=worker_b.id: self._end_friend_conversation(a, b),
+        )
+
+    def _end_friend_conversation(self, id_a: str, id_b: str):
+        """End a conversation and restore workers to pre-chat status."""
+        worker_a = self.manager.get_worker(id_a)
+        worker_b = self.manager.get_worker(id_b)
+        if not worker_a or not worker_b:
+            return
+        if worker_a.status != "chatting" or worker_b.status != "chatting":
+            return
+
+        status_a, status_b = self.friendships.end_conversation(id_a, id_b)
+        worker_a.status = status_a
+        worker_b.status = status_b
+        self.office.update_worker(worker_a)
+        self.office.update_worker(worker_b)
+        self.office.remove_friend_group(id_a, id_b)
+        self._refresh_status_bar()
+
+    def _on_conversation_ready(self, id_a: str, id_b: str, raw_json: str):
+        """Handle AI-generated conversation text."""
+        import json as _json
+        try:
+            text = raw_json.strip()
+            start = text.find("[")
+            end = text.rfind("]") + 1
+            if start >= 0 and end > start:
+                lines = _json.loads(text[start:end])
+            else:
+                lines = []
+        except Exception:
+            logging.getLogger("main").warning(f"Failed to parse conversation JSON: {raw_json[:200]}")
+            lines = []
+
+        if lines:
+            worker_a = self.manager.get_worker(id_a)
+            worker_b = self.manager.get_worker(id_b)
+            if not worker_a or not worker_b:
+                return
+            formatted = []
+            for line in lines:
+                name = line.get("name", "")
+                text = line.get("text", "")
+                if name == worker_a.name:
+                    formatted.append({"worker_id": id_a, "text": text})
+                else:
+                    formatted.append({"worker_id": id_b, "text": text})
+
+            self.friendships.save_conversation(id_a, id_b, formatted)
+            self.office.update_friend_group_conversation(id_a, id_b, formatted)
+
+    def _check_follow_friend(self, worker):
+        """When a worker starts slacking, maybe a friend follows them."""
+        if worker.status not in self._SOCIALIZING_STATUSES:
+            return
+        if worker.status == "chatting":
+            return
+
+        friends = self.friendships.get_friends(worker.id)
+        if not friends:
+            return
+
+        eligible = []
+        for friend_id, level in friends:
+            friend = self.manager.get_worker(friend_id)
+            if not friend:
+                continue
+            if friend.status != "idle":
+                continue
+            if friend.id in self._pending_messages:
+                continue
+            chance = FOLLOW_CHANCES.get(level, 0)
+            if random.random() < chance:
+                eligible.append((friend, level))
+
+        if not eligible:
+            return
+
+        # Pick one follower weighted by level
+        if len(eligible) == 1:
+            follower = eligible[0][0]
+        else:
+            workers_list = [e[0] for e in eligible]
+            weights = [e[1] for e in eligible]
+            follower = random.choices(workers_list, weights=weights, k=1)[0]
+
+        target_status = worker.status
+        delay = random.randint(2, 5) * 1000
+        QTimer.singleShot(
+            delay,
+            lambda fid=follower.id, s=target_status: self._follow_friend(fid, s),
+        )
+
+    def _follow_friend(self, follower_id: str, target_status: str):
+        """Make a worker follow their friend to a room."""
+        follower = self.manager.get_worker(follower_id)
+        if not follower:
+            return
+        if follower.status != "idle" or follower.id in self._pending_messages:
+            return
+        follower.status = target_status
+        self.office.update_worker(follower)
+        self._refresh_status_bar()
+        logging.getLogger("main").info(f"{follower.name} followed a friend -> {target_status}")
+
+    def _refresh_friend_indicators(self):
+        """Update friend count indicators on worker widgets."""
+        for worker in self.manager.workers:
+            count = self.friendships.get_friend_count(worker.id)
+            self.office.update_friend_indicator(worker.id, count)
+
+    def _open_friend_chat(self, id_a: str, id_b: str):
+        worker_a = self.manager.get_worker(id_a)
+        worker_b = self.manager.get_worker(id_b)
+        if not worker_a or not worker_b:
+            return
+        level = self.friendships.get_level(id_a, id_b)
+        history = self.friendships.load_conversations(id_a, id_b)
+
+        key = "|".join(sorted([id_a, id_b]))
+        group = self.office._friend_groups.get(key)
+        current_lines = group._conversation_lines if group else []
+
+        from src.friend_chat_dialog import FriendChatDialog
+        dlg = FriendChatDialog(worker_a, worker_b, level, current_lines, history, self)
+        dlg.exec()
+
     def _fire_worker(self, worker_id: str):
         worker = self.manager.get_worker(worker_id)
         if not worker:
@@ -336,6 +563,7 @@ class MainWindow(QMainWindow):
                 self._active_chat.close()
                 self._active_chat = None
             self.office.remove_worker(worker_id)
+            self.friendships.remove_worker(worker_id)
             self.manager.remove_worker(worker_id)
             self._refresh_status_bar()
 
