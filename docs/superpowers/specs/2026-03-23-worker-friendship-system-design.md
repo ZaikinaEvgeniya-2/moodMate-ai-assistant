@@ -23,7 +23,9 @@ friendships: dict[tuple[str, str], int]  # (worker_id_a, worker_id_b) -> level 1
 - `get_friends_in_room(worker_id, room, all_workers) -> list[Worker]` — friends in same room
 - `save()` / `load()` — persist to `data/friendships.json`
 
-**New worker status:** `"chatting"` added to `STATUS_TO_ROOM`. Unlike other statuses, `chatting` maps to the worker's current room dynamically (kitchen, hallway, or meeting_room — never workspace).
+**New worker status:** `"chatting"` added. Since `chatting` can happen in any non-workspace room, the Worker class gets a `_room_override: str | None` field. When `_room_override` is set, `current_room` returns it instead of looking up `STATUS_TO_ROOM`. When status changes to `"chatting"`, set `_room_override` to the worker's current room first. When status changes away from `"chatting"`, clear `_room_override` to `None`. `STATUS_TO_ROOM` maps `"chatting"` to `"kitchen"` as a fallback default, but the override takes precedence.
+
+**New status color/label:** `STATUS_COLORS["chatting"] = "#e91e63"` (pink), `STATUS_LABELS["chatting"] = "Chatting"`.
 
 ### Persistence
 
@@ -67,7 +69,7 @@ Two workers slacking in the kitchen simultaneously grow friendship by +1 per 10-
 
 When BehaviorEngine changes a worker's status to a slacking state (`on_break`, `in_kitchen`, `wandering`, `making_excuses`):
 
-1. Query FriendshipManager for friends of that worker who are currently `idle` in workspace with no pending task
+1. **In MainWindow** (not FriendshipManager), query FriendshipManager for friends of that worker, then filter to those who are `idle` in workspace and have no pending task (`worker.id not in self._pending_messages`). The follow-friend check lives in MainWindow because only MainWindow has access to `_pending_messages` state.
 2. For each eligible friend, roll against friendship level chance (10%/25%/40%/60%/80%)
 3. **Max 1 follower per event** — if multiple friends pass the roll, pick one randomly (weighted by level). Prevents the entire office emptying out.
 4. The chosen follower changes status to match the destination room (e.g., `in_kitchen`) after a random 2-5 second delay
@@ -87,7 +89,7 @@ When the 10-second tick detects two friends co-located in a non-workspace room a
 - Topics: office gossip, complaining about work, random fun based on their personalities
 
 ### Storage
-Conversations saved to `data/conversations/{worker_a_id}_{worker_b_id}.json`:
+Conversations saved to `data/conversations/{worker_a_id}_{worker_b_id}.json` (IDs alphabetically sorted, matching the friendship key convention):
 ```json
 {
   "conversations": [
@@ -112,7 +114,7 @@ Conversations saved to `data/conversations/{worker_a_id}_{worker_b_id}.json`:
 
 ## Chef Interaction
 
-No special treatment. Chef catches slackers the same way:
+No special treatment. `"chatting"` must be added to `_SLACKING_STATUSES` in MainWindow so the Chef catches chatting workers:
 - If Chef enters a room where friends are `chatting`, both get the "Sorry!" treatment
 - Both get sent back to workspace
 - Conversation is interrupted and saved as-is
@@ -158,5 +160,5 @@ When a worker has friends, their regular WorkerWidget shows a small indicator:
 - `src/office_view.py` — handle FriendGroupWidget creation/removal, friend indicator on WorkerWidget
 - `src/worker_widget.py` — add friend count indicator
 - `src/main.py` — wire up FriendshipManager, tick timer, follow-friend logic, conversation triggers
-- `src/worker_manager.py` — save/load conversations
+- `src/worker_manager.py` — add conversations directory management
 - `src/personality.py` — BehaviorEngine awareness of chatting status (don't override it)
